@@ -15,6 +15,77 @@ class yoloLoss(nn.Module):
         pred_tensor: (tensor) size(batchsize,S,S,Bx5+20=30) [x,y,w,h,c]
         target_tensor: (tensor) size(batchsize,S,S,30)
         '''
+        # N is batch size
+        N = pred_tensor.size()[0]
+        
+        # 寻找target tensor那些prob大于0的所有grid，即所有包含目标的grid
+        coo_mask = target_tensor[:,:,:,4] > 0  # coo_mask比target_tensor少一个维度coo_mask.shape=(N,S,S)
+        # 寻找target tensor那些prob=0的所有grid，即所有不包含目标的grid
+        noo_mask = target_tensor[:,:,:,4] == 0 # noo_mask.shape=(N,S,S)
+        coo_mask = coo_mask.unsqueeze(-1).expand_as(target_tensor) #coo_mask.shape=(N,S,S,30)
+        noo_mask = noo_mask.unsqueeze(-1).expand_as(target_tensor) #coo_mask.shape=(N,S,S,30)
+        
+        #
+        coo_pred = pred_tensor[coo_mask].view(-1,30) #coo_pred.shape=(N*X,30),X代表多少个grid对应的prob是大于0的
+        # 提取两个(B=2)bbox
+        # box= [[x1,y1,w1,h1,c1],
+        #     [x2,y2,w2,h2,c2]]
+        box_pred = coo_pred[:,:10].contiguous().view(-1,5) #box_pred.shape=(N*X*2,5)
+        class_pred = coo_pred[:,10:]
+        #
+        coo_target = target_tensor[coo_mask].view(-1,30) 
+        box_target = coo_target[:,:10].contiguous().view(-1,5)
+        class_target = coo_target[:,10:]
+        
+        # 1.compute not contain obj loss
+        noo_pred = pred_tensor[noo_mask].view(-1,30)
+        noo_target = target_tensor[noo_mask].view(-1,30)
+        noo_pred_mask = torch.cuda.ByteTensor(noo_pred.size())
+        noo_pred_mask.zero_()
+        # noo_pred只需要计算c的损失，将pred与target的c提取出来
+        noo_pred_mask[:,4] = 1
+        noo_pred_mask[:,9] = 1
+        noo_pred_c = noo_pred[noo_pred_mask]
+        noo_target_c = noo_target[noo_pred_mask]
+        nooobj_loss = F.mse_loss(noo_pred_c, noo_target_c, size_average=False)
+        
+        # 2.compute contain obj loss
+        coo_response_mask = torch.cuda.ByteTensor(box_target.size())    #shape=(-1,5)
+        coo_response_mask.zero_()
+        coo_not_response_mask = torch.cuda.ByteTensor(box_target.size()) #shape=(-1,5)
+        coo_not_response_mask.zero_()
+        box_target_iou = torch.zeros(box_target.size()).cuda()
+        #choose the best iou box
+        for i in range(0,box_target.size()[0], 2):
+            #box1取了每个gird对应的2个box
+            box1 = box_pred[i:i+2]        #box1.shape=(2,5)
+            box1_xyxy = Variable(torch.FloatTensor(box1.size()))
+            box1_xyxy[:,:2] = box1[:,:2]/14. - 0.5*box1[:,2:4]
+            box1_xyxy[:,2:4] = box1[:,:2]/14. + 0.5*box1[:,2:4]
+            
+            #box2只取了每个grid对应的第一个box
+            box2 = box_target[i].view(-1,5)  #box2.shape=(1,5)
+            box2_xyxy = Variable(torch.FloatTensor(box2.size()))
+            box2_xyxy[:,:2] = box2[:,:2]/14. - 0.5*box2[:,2:4]
+            box2_xyxy[:,2:4] = box2[:,:2]/14. + 0.5*box2[:,2:4]
+            
+            iou = self.compute_io(box1_xyxy[:,:4], box2_xyxy[:,:4]) #iou.shape=(2,1)
+            max_iou, max_index = iou.max(0)
+            max_index = max_index.data.cuda()
+            
+            coo_response_mask[i+max_index]     = 1 
+            coo_not_response_mask[i+1-max_index] = 1
+            #####
+            # we want the confidence score to equal the
+            # intersection over union (IOU) between the predicted box
+            # and the ground truth
+            #####
+            box_target_iou[i+max_index, torch.LongTensor([4]).cuda()] = (max_iou).data.cuda()
+        
+        box_target_iou = Variable(box_target_iou).cuda()
+        # 2-1. response loss
+        
+        
         
     def compute_iou(self, box1, box2):
         '''Compute the intersection over union of two set of boxes, each box is [x1,y1,x2,y2].
