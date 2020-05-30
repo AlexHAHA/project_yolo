@@ -84,7 +84,26 @@ class yoloLoss(nn.Module):
         
         box_target_iou = Variable(box_target_iou).cuda()
         # 2-1. response loss
+        box_pred_response     = box_pred[coo_response_mask].view(-1,5)
+        box_target_response_iou = box_target_iou[coo_response_mask].view(-1,5)
+        box_target_response    = box_target[coo_response_mask].view(-1,5)
+        contain_loss = F.mse_loss(box_pred_response[:,4], box_target_response_iou[:,4],
+                                  size_average=False)
+        loc_loss = F.mse_loss(box_pred_response[:,:2],box_target_response[:,:2], size_average=False) +\\
+                F.mse_loss(torch.sqrt(box_pred_response[:,2:4]),torch.sqrt(box_target_response[:,2:4]))
+        # 2-2. not response loss
+        box_pred_not_response  = box_pred[coo_not_response_mask].view(-1,5)
+        box_target_not_response = box_target[coo_not_response_mask].view(-1,5)
+        box_target_not_response[:,4] = 0
+        not_contain_loss = F.mse_loss(box_pred_not_response[:,4], box_target_not_response[:,4], size_average=False)
         
+        #3.class loss
+        class_loss = F.mse_loss(class_pred, class_target, size_average=False)
+        
+        loss = (self.l_coord*loc_loss + 2*contain_loss + not_contain_loss + self.l_noobj*noobj_loss + class_loss)/N
+        return loss
+                           
+                           
         
         
     def compute_iou(self, box1, box2):
