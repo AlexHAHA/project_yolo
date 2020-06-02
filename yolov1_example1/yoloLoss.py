@@ -47,7 +47,7 @@ class yoloLoss(nn.Module):
         noo_pred_mask[:,9] = 1
         noo_pred_c = noo_pred[noo_pred_mask]
         noo_target_c = noo_target[noo_pred_mask]
-        nooobj_loss = F.mse_loss(noo_pred_c, noo_target_c, size_average=False)
+        noobj_loss = F.mse_loss(noo_pred_c, noo_target_c, size_average=False)
         
         # 2.compute contain obj loss
         coo_response_mask = torch.cuda.ByteTensor(box_target.size())    #shape=(-1,5)
@@ -60,16 +60,16 @@ class yoloLoss(nn.Module):
             #box1取了每个gird对应的2个box
             box1 = box_pred[i:i+2]        #box1.shape=(2,5)
             box1_xyxy = Variable(torch.FloatTensor(box1.size()))
-            box1_xyxy[:,:2] = box1[:,:2]/14. - 0.5*box1[:,2:4]
-            box1_xyxy[:,2:4] = box1[:,:2]/14. + 0.5*box1[:,2:4]
+            box1_xyxy[:,:2] = box1[:,:2]/7. - 0.5*box1[:,2:4]
+            box1_xyxy[:,2:4] = box1[:,:2]/7. + 0.5*box1[:,2:4]
             
             #box2只取了每个grid对应的第一个box
             box2 = box_target[i].view(-1,5)  #box2.shape=(1,5)
             box2_xyxy = Variable(torch.FloatTensor(box2.size()))
-            box2_xyxy[:,:2] = box2[:,:2]/14. - 0.5*box2[:,2:4]
-            box2_xyxy[:,2:4] = box2[:,:2]/14. + 0.5*box2[:,2:4]
+            box2_xyxy[:,:2] = box2[:,:2]/7. - 0.5*box2[:,2:4]
+            box2_xyxy[:,2:4] = box2[:,:2]/7. + 0.5*box2[:,2:4]
             
-            iou = self.compute_io(box1_xyxy[:,:4], box2_xyxy[:,:4]) #iou.shape=(2,1)
+            iou = self.compute_iou(box1_xyxy[:,:4], box2_xyxy[:,:4]) #iou.shape=(2,1)
             max_iou, max_index = iou.max(0)
             max_index = max_index.data.cuda()
             
