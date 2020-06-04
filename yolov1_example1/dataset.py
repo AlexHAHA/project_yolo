@@ -48,6 +48,9 @@ class yoloDataset(data.Dataset):
             lines = f.readlines()
         
         for line in lines:
+            if line == '\n':
+                #print(f'dataset.py: line={line}')
+                continue
             splited = line.strip().split()
             self.fnames.append(splited[0])
             num_boxes = (len(splited) - 1) // 5
@@ -68,6 +71,7 @@ class yoloDataset(data.Dataset):
     def __getitem__(self, idx):
         fname  = self.fnames[idx]
         #img    = cv2.imread(os.path.join(self.root+fname))
+        #print(f'dataset.py:{os.path.join(self.root, fname)}')
         img    = cv2.imread(os.path.join(self.root, fname))
         boxes  = self.boxes[idx].clone()
         labels = self.labels[idx].clone()
