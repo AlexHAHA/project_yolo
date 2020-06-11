@@ -9,6 +9,7 @@ import torchvision.models as models
 from torch.autograd import Variable
 
 from resnet_yolo import resnet50, resnet18
+from vgg_yolo import vgg16, vgg16_bn
 from yoloLoss import yoloLoss
 from dataset import yoloDataset
 #from visualize import Visualizer
@@ -24,7 +25,7 @@ use_resnet    = True
 if use_resnet:
     net = resnet50()
 else:
-    pass
+    net = vgg16()
 
 print('load pre-trained model')
 if use_resnet:
@@ -39,7 +40,15 @@ if use_resnet:
             dd[k] = new_state_dict[k]
     net.load_state_dict(dd)
 else:
-    pass
+    vggnet = models.vgg16()
+    #vggnet.load_state_dict(torch.load(r''))
+    new_state_dict = vggnet.state_dict()
+    dd = net.state_dict()
+    for k in new_state_dict.keys():
+        if k in dd.keys() and k.startswith('features'):
+            dd[k] = new_state_dict[k]
+    net.load_state_dict(dd)
+    
 #load trained weights
 if False:
     net.load_state_dict(torch.load('best.pth'))
